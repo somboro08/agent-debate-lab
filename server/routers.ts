@@ -6,6 +6,7 @@ import { publicProcedure, router } from "./_core/trpc";
 import { invokeLLM } from "./_core/llm";
 
 const debateSchema = z.object({ projectName: z.string().min(1).max(120), context: z.string().min(10).max(12000), objective: z.string().min(5).max(1000) });
+const resultSchema = { type: "object", properties: { turns: { type: "array", items: { type: "object", properties: { speaker: { type: "string" }, role: { type: "string" }, tone: { type: "string", enum: ["amber", "green", "neutral", "violet"] }, text: { type: "string" } }, required: ["speaker", "role", "tone", "text"], additionalProperties: false } }, verdict: { type: "string" }, criterion: { type: "string" }, nextStep: { type: "string" } }, required: ["turns", "verdict", "criterion", "nextStep"], additionalProperties: false };
 
 export const appRouter = router({
   system: systemRouter,
@@ -16,17 +17,16 @@ export const appRouter = router({
   debate: router({
     run: publicProcedure.input(debateSchema).mutation(async ({ input }) => {
       const response = await invokeLLM({
-        model: "gpt-5",
-        reasoning: { effort: "low" },
+        model: "gpt-5", reasoning: { effort: "low" },
         messages: [
-          { role: "system", content: `Tu es le moteur d'un jury de deux agents qui travaillent en désaccord constructif. Réponds uniquement avec un JSON valide. Le premier agent, "L'Exploratrice", cherche les besoins réels, les angles morts et les signaux faibles. Le second, "Le Contradicteur", teste les hypothèses, demande des preuves et repère les risques. Après trois tours, "La Présidente" tranche avec un critère de validation concret. Format exact: {"turns":[{"speaker":"string","role":"string","tone":"amber|green|neutral","text":"string"}],"verdict":"string","criterion":"string"}. Les textes sont en français, concis (2 à 4 phrases par tour), sans inventer de données.` },
-          { role: "user", content: `Projet: ${input.projectName}\nContexte partagé: ${input.context}\nObjectif à atteindre: ${input.objective}\nFais dialoguer les deux agents puis conclus.` },
+          { role: "system", content: `Tu es un orchestrateur de séance de travail avec quatre rôles complémentaires. Réponds uniquement avec un JSON valide. 1) "L'Orchestrateur" reçoit le contexte, reformule l'objectif et distribue les questions. 2) "L'Exploratrice" propose des pistes et des hypothèses. 3) "Le Partenaire" aide, améliore les pistes et ramène doucement la discussion vers l'objectif si elle s'égare. 4) "La Gardienne" vérifie à chaque passage que le travail répond bien à l'objectif, pose des questions de contrôle et signale ce qui manque. Ils ne cherchent pas à se contredire : ils construisent ensemble, posent plusieurs questions et itèrent. Fais 6 à 8 tours courts dans cet ordre naturel, puis fais conclure l'Orchestrateur. Format exact: {"turns":[{"speaker":"string","role":"orchestration|exploration|co-construction|vigilance","tone":"amber|green|neutral|violet","text":"string"}],"verdict":"string","criterion":"string","nextStep":"string"}. Le verdict est une réponse claire à l'objectif. Le criterion est observable. nextStep est la prochaine action concrète. Français, 2 à 4 phrases par tour, aucune donnée inventée.` },
+          { role: "user", content: `Projet: ${input.projectName}\nContexte commun: ${input.context}\nObjectif unique à atteindre: ${input.objective}\nOrchestre une séance d'entraide, de recentrage et d'amélioration progressive.` },
         ],
-        response_format: { type: "json_schema", json_schema: { name: "jury_debate", strict: true, schema: { type: "object", properties: { turns: { type: "array", items: { type: "object", properties: { speaker: { type: "string" }, role: { type: "string" }, tone: { type: "string", enum: ["amber", "green", "neutral"] }, text: { type: "string" } }, required: ["speaker", "role", "tone", "text"], additionalProperties: false } }, verdict: { type: "string" }, criterion: { type: "string" } }, required: ["turns", "verdict", "criterion"], additionalProperties: false } } },
+        response_format: { type: "json_schema", json_schema: { name: "collaborative_jury", strict: true, schema: resultSchema } },
       });
       const raw = response.choices?.[0]?.message?.content;
       const text = typeof raw === "string" ? raw : raw.map(part => part.type === "text" ? part.text : "").join("");
-      return JSON.parse(text) as { turns: Array<{ speaker: string; role: string; tone: string; text: string }>; verdict: string; criterion: string };
+      return JSON.parse(text) as { turns: Array<{ speaker: string; role: string; tone: string; text: string }>; verdict: string; criterion: string; nextStep: string };
     }),
   }),
 });
