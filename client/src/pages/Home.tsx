@@ -11,25 +11,34 @@ import { ArrowUpRight, Check, ChevronRight, CircleDashed, Lightbulb, MessageSqua
 const seedContext = "Nous voulons créer une plateforme qui aide les équipes non techniques à transformer une idée en projet testable, en quelques jours, sans perdre la nuance du problème initial.";
 const seedObjective = "Établir un problème clair que le projet va résoudre";
 type TranscriptItem = { speaker: string; role: string; tone: string; text: string };
+type Agent = { name: string; role: string; expertise: string; creativity: number };
+const initialAgents: Agent[] = [
+  { name: "L’Orchestrateur", role: "orchestration", expertise: "synthèse et décision", creativity: 60 },
+  { name: "L’Exploratrice", role: "exploration", expertise: "besoins et opportunités", creativity: 80 },
+  { name: "Le Partenaire", role: "co-construction", expertise: "solutions et amélioration", creativity: 70 },
+  { name: "La Gardienne", role: "vigilance", expertise: "alignement et critères", creativity: 40 },
+];
 
 export default function Home() {
   const [context, setContext] = useState(seedContext);
   const [objective, setObjective] = useState(seedObjective);
+  const [objectives, setObjectives] = useState([seedObjective]);
+  const [activeObjective, setActiveObjective] = useState(0);
+  const [agents, setAgents] = useState(initialAgents);
   const [projectName, setProjectName] = useState("Atelier Produit");
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
   const [finale, setFinale] = useState<{ verdict: string; criterion: string; nextStep: string } | null>(null);
   const [isRunning, setIsRunning] = useState(false);
-  const debate = trpc.debate.run.useMutation();
-
   const runDebate = async () => {
     if (!context.trim() || !objective.trim()) return;
     setIsRunning(true);
+    setTranscript([]); setFinale(null);
     try {
-      const result = await debate.mutateAsync({ context, objective, projectName });
-      setTranscript([]);
-      setFinale(null);
-      result.turns.forEach((turn, index) => setTimeout(() => setTranscript(current => [...current, turn]), index * 850));
-      setTimeout(() => setFinale({ verdict: result.verdict, criterion: result.criterion, nextStep: result.nextStep }), result.turns.length * 850 + 500);
+      const response = await fetch("/api/debate/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ context, objective, projectName, agents }) });
+      if (!response.body) throw new Error("Flux SSE indisponible");
+      const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = "";
+      while (true) { const { value, done } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const chunks = buffer.split("\n\n"); buffer = chunks.pop() || ""; for (const chunk of chunks) { const line = chunk.split("\n").find(item => item.startsWith("data: ")); if (!line) continue; const event = JSON.parse(line.slice(6)); if (event.type === "turn") setTranscript(current => [...current, event.turn]); if (event.type === "finale") setFinale({ verdict: event.verdict, criterion: event.criterion, nextStep: event.nextStep }); } }
+      setObjectives(current => current.includes(objective) ? current : [...current, objective]);
     } catch {
       setTranscript([{ speaker: "Système", role: "note", tone: "neutral", text: "La séance n’a pas pu démarrer. Vérifiez la configuration du modèle et réessayez." }]);
     } finally { setIsRunning(false); }
@@ -50,6 +59,8 @@ export default function Home() {
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-5 mb-8"><div><div className="flex items-center gap-2 text-xs text-[#8b8b81] mb-3"><span>PROJETS</span><ChevronRight className="size-3" /><span className="text-[#1c1c1b]">{projectName}</span></div><h1 className="text-3xl md:text-[40px] font-semibold tracking-[-.04em]">Le studio de décision<span className="text-[#c2a321]">.</span></h1><p className="text-[#777770] mt-2 max-w-xl">Quatre rôles. Une conversation. Une idée qui devient plus solide.</p></div><Badge variant="outline" className="border-[#d7d7cf] bg-white px-3 py-1.5 font-normal"><CircleDashed className="size-3 mr-1.5 text-[#bb9e19]" /> {isRunning ? "Séance en direct" : finale ? "Conclusion prête" : "En préparation"}</Badge></div>
         <div className="grid xl:grid-cols-[minmax(0,1fr)_390px] gap-6 items-start">
           <div className="space-y-6">
+            <Card className="border-[#deded7] shadow-[0_8px_30px_rgba(30,30,20,.04)] bg-[#fffefa]"><CardHeader className="border-b border-[#e7e7df] pb-5"><div className="flex items-start justify-between"><div><div className="text-xs uppercase tracking-[.14em] text-[#9a9a8e] mb-2">Parcours du projet</div><CardTitle className="text-lg">Objectifs successifs</CardTitle></div><span className="text-xs text-[#a1a198]">{activeObjective + 1} / {objectives.length}</span></div></CardHeader><CardContent className="pt-4"><div className="space-y-2">{objectives.map((item, index) => <button key={item} onClick={() => { setActiveObjective(index); setObjective(item); }} className={`w-full text-left flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm ${activeObjective === index ? "bg-[#f3efcf] text-[#5f5008]" : "bg-[#f7f7f4] text-[#777770]"}`}><span className="size-5 rounded-full border border-current grid place-items-center text-[10px]">{index + 1}</span><span className="truncate">{item}</span>{finale && activeObjective === index && <Check className="size-4 ml-auto" />}</button>)}</div><Button variant="ghost" size="sm" className="mt-3 text-[#777770]" onClick={() => { const next = `Nouvel objectif ${objectives.length + 1}`; setObjectives(current => [...current, next]); setActiveObjective(objectives.length); setObjective(next); }}><Plus className="size-3.5" /> Ajouter un objectif</Button></CardContent></Card>
+            <Card className="border-[#deded7] shadow-[0_8px_30px_rgba(30,30,20,.04)] bg-[#fffefa]"><CardHeader className="border-b border-[#e7e7df] pb-5"><div className="flex items-start justify-between"><div><div className="text-xs uppercase tracking-[.14em] text-[#9a9a8e] mb-2">Équipe de travail</div><CardTitle className="text-lg">Les quatre rôles</CardTitle></div><span className="text-xs text-[#a1a198]">personnalisable</span></div></CardHeader><CardContent className="pt-4 grid sm:grid-cols-2 gap-3">{agents.map((agent, index) => <div key={agent.role} className="rounded-lg border border-[#e7e7df] p-3"><Input value={agent.name} onChange={e => setAgents(current => current.map((item, i) => i === index ? { ...item, name: e.target.value } : item))} className="h-8 text-sm font-medium border-0 bg-[#f7f7f4] mb-2" /><Input value={agent.expertise} onChange={e => setAgents(current => current.map((item, i) => i === index ? { ...item, expertise: e.target.value } : item))} className="h-7 text-xs border-0 px-2 text-[#777770]" /><div className="flex items-center gap-2 mt-2"><span className="text-[10px] text-[#999990]">créativité</span><input type="range" min="0" max="100" value={agent.creativity} onChange={e => setAgents(current => current.map((item, i) => i === index ? { ...item, creativity: Number(e.target.value) } : item))} className="w-full accent-[#b49a16]" /></div></div>)}</CardContent></Card>
             <Card className="border-[#deded7] shadow-[0_8px_30px_rgba(30,30,20,.04)] bg-[#fffefa]"><CardHeader className="border-b border-[#e7e7df] pb-5"><div className="flex items-start justify-between"><div><div className="flex items-center gap-2 text-xs uppercase tracking-[.14em] text-[#9a9a8e] mb-2"><Lightbulb className="size-3.5 text-[#b49a16]" /> Brief commun</div><CardTitle className="text-lg">Ce que les agents doivent savoir</CardTitle></div><span className="text-xs text-[#a1a198]">01 / 03</span></div></CardHeader><CardContent className="pt-5"><label className="text-xs font-medium text-[#686860]">Nom du projet</label><Input value={projectName} onChange={e => setProjectName(e.target.value)} className="mt-2 mb-4 bg-white border-[#dcdcd3]" /><label className="text-xs font-medium text-[#686860]">Contexte, contraintes et informations utiles</label><Textarea value={context} onChange={e => setContext(e.target.value)} className="mt-2 min-h-[150px] resize-none bg-white border-[#dcdcd3] leading-6" /><div className="flex justify-between items-center mt-4 text-xs text-[#9a9a90]"><span>{context.length} caractères · partagé aux deux agents</span><Button variant="ghost" size="sm" className="text-[#76766d]">Ajouter une source <ArrowUpRight className="size-3.5" /></Button></div></CardContent></Card>
             <Card className="border-[#deded7] shadow-[0_8px_30px_rgba(30,30,20,.04)] bg-[#fffefa]"><CardHeader className="border-b border-[#e7e7df] pb-5"><div className="flex items-start justify-between"><div><div className="flex items-center gap-2 text-xs uppercase tracking-[.14em] text-[#9a9a8e] mb-2"><Target className="size-3.5 text-[#b49a16]" /> Objectif actif</div><CardTitle className="text-lg">Sur quoi le jury doit trancher</CardTitle></div><Badge className="bg-[#f5edbf] text-[#77630c] hover:bg-[#f5edbf] border-0">Étape 1</Badge></div></CardHeader><CardContent className="pt-5"><Textarea value={objective} onChange={e => setObjective(e.target.value)} className="min-h-[108px] resize-none bg-white border-[#dcdcd3] text-base leading-6" /><div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4"><p className="text-xs text-[#8e8e84] max-w-sm">Les agents argumentent, se contredisent et formulent un critère de validation.</p><Button onClick={runDebate} disabled={isRunning} className="bg-[#20201e] hover:bg-[#373733] text-white rounded-lg px-5">{isRunning ? <><span className="size-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Débat en cours</> : <><Play className="size-3.5 fill-current" /> Lancer le débat</>}</Button></div></CardContent></Card>
           </div>
