@@ -8,6 +8,13 @@
       "when": 1788437058520,
       "tag": "0000_clean_black_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1788441926939,
+      "tag": "0001_wealthy_master_chief",
+      "breakpoints": true
     }
   ]
 }

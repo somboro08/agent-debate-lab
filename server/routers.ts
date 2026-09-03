@@ -4,6 +4,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { invokeLLM } from "./_core/llm";
+import { getProjectHistory, saveDebateSession } from "./db";
 
 const debateSchema = z.object({ projectName: z.string().min(1).max(120), context: z.string().min(10).max(12000), objective: z.string().min(5).max(1000) });
 const resultSchema = { type: "object", properties: { turns: { type: "array", items: { type: "object", properties: { speaker: { type: "string" }, role: { type: "string" }, tone: { type: "string", enum: ["amber", "green", "neutral", "violet"] }, text: { type: "string" } }, required: ["speaker", "role", "tone", "text"], additionalProperties: false } }, verdict: { type: "string" }, criterion: { type: "string" }, nextStep: { type: "string" } }, required: ["turns", "verdict", "criterion", "nextStep"], additionalProperties: false };
@@ -15,6 +16,8 @@ export const appRouter = router({
     logout: publicProcedure.mutation(({ ctx }) => { const cookieOptions = getSessionCookieOptions(ctx.req); ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 }); return { success: true } as const; }),
   }),
   debate: router({
+    history: publicProcedure.input(z.object({ sessionKey: z.string().min(1) })).query(({ input }) => getProjectHistory(input.sessionKey)),
+    save: publicProcedure.input(z.object({ sessionKey: z.string().min(1), name: z.string(), context: z.string(), objective: z.string(), verdict: z.string(), criterion: z.string(), turns: z.array(z.object({ speaker: z.string(), role: z.string(), tone: z.string(), text: z.string() })) })).mutation(({ input }) => saveDebateSession(input)),
     run: publicProcedure.input(debateSchema).mutation(async ({ input }) => {
       const response = await invokeLLM({
         model: "gpt-5", reasoning: { effort: "low" },
