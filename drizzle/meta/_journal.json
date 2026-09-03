@@ -15,6 +15,13 @@
       "when": 1788441926939,
       "tag": "0001_wealthy_master_chief",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1788442954841,
+      "tag": "0002_hot_human_fly",
+      "breakpoints": true
     }
   ]
 }
